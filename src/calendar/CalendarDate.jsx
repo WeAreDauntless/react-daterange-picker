@@ -1,4 +1,5 @@
 import React from 'react';
+import ReactDOM from 'react-dom';
 
 import Immutable from 'immutable';
 
@@ -39,18 +40,26 @@ const CalendarDate = React.createClass({
     onHighlightDate: React.PropTypes.func,
     onUnHighlightDate: React.PropTypes.func,
     onSelectDate: React.PropTypes.func,
+    onInteractionStart: React.PropTypes.func,
   },
 
   getInitialState() {
     return {
       mouseDown: false,
+      lastHighlight: null //used for touchend
     };
   },
 
+  componentDidMount() {
+    ReactDOM.findDOMNode(this).addEventListener('customtouchenter', this.touchEnter);
+  },
   componentWillUnmount() {
     this.isUnmounted = true;
     document.removeEventListener('mouseup', this.mouseUp);
     document.removeEventListener('touchend', this.touchEnd);
+    document.removeEventListener('touchmove', this.touchMove);
+    ReactDOM.findDOMNode(this).removeEventListener('customtouchenter', this.touchEnter);
+    document.removeEventListener('mousenter', this.mouseEnter);
   },
 
   mouseUp() {
@@ -63,6 +72,7 @@ const CalendarDate = React.createClass({
     if (this.state.mouseDown) {
       this.setState({
         mouseDown: false,
+        lastHighlight: null //used for touchend
       });
     }
 
@@ -70,6 +80,8 @@ const CalendarDate = React.createClass({
   },
 
   mouseDown() {
+    this.props.onInteractionStart(this.props.date);
+
     this.setState({
       mouseDown: true,
     });
@@ -78,8 +90,7 @@ const CalendarDate = React.createClass({
   },
 
   touchEnd() {
-    this.props.onHighlightDate(this.props.date);
-    this.props.onSelectDate(this.props.date);
+    this.props.onSelectDate(this.state.lastHighlight || this.props.date);
 
     if (this.isUnmounted) {
       return;
@@ -88,17 +99,49 @@ const CalendarDate = React.createClass({
     if (this.state.mouseDown) {
       this.setState({
         mouseDown: false,
+        lastHighlight: null //used for touchend
       });
     }
     document.removeEventListener('touchend', this.touchEnd);
+    document.removeEventListener('touchmove', this.touchMove);
   },
 
   touchStart(event) {
+    this.props.onHighlightDate(this.props.date);
+    this.props.onSelectDate(this.props.date);
+    this.props.onInteractionStart(this.props.date);
+
     event.preventDefault();
     this.setState({
       mouseDown: true,
     });
+    document.addEventListener('touchmove', this.touchMove);
     document.addEventListener('touchend', this.touchEnd);
+  },
+
+  touchMove(event) {
+    let target = document.elementFromPoint(event.targetTouches[0].clientX, event.targetTouches[0].clientY);
+
+    if(target && target !== this.state.lastTouchEl) {
+      this.setState({
+        lastTouchEl: target
+      });
+
+      target.dispatchEvent(
+        new CustomEvent('customtouchenter', {
+            detail: {
+                update: this.updateLastHighlight
+            },
+            bubbles: true
+        })
+      );
+    }
+  },
+
+  touchEnter(event) {
+    event.stopPropagation();
+    this.props.onHighlightDate(this.props.date);
+    event.detail.update(this.props.date); // return to the element responsible for touchEnd
   },
 
   mouseEnter() {
@@ -114,6 +157,12 @@ const CalendarDate = React.createClass({
       });
     }
     this.props.onUnHighlightDate(this.props.date);
+  },
+
+  updateLastHighlight(date) {
+    this.setState({
+      lastHighlight: date
+    });
   },
 
   getBemModifiers() {
